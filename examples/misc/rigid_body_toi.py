@@ -69,6 +69,16 @@ def advance_no_toi(t: ti.i32):
         v[t, i] = new_v
         x[t, i] = x[t - 1, i] + dt * new_v
 
+@ti.kernel
+def advance_ours(t: ti.i32):
+    for i in range(n_objects):
+        new_v = v[t - 1, i]
+        if x[t - 1, i][1] < ground_height and new_v[1] < 0:
+            new_v[1] = new_v[1] - 2 * new_v[1] / (x[t - 1, i][1] + 1e-5)
+        v[t, i] = new_v
+        x[t, i] = x[t - 1, i] + dt * new_v
+
+
 
 @ti.kernel
 def compute_loss(t: ti.i32):
@@ -90,7 +100,8 @@ def forward(output=None, visualize=True):
         if use_toi:
             advance_toi(t)
         else:
-            advance_no_toi(t)
+            # advance_no_toi(t)
+            advance_ours(t)
 
         if (t + 1) % interval == 0 and visualize:
             gui.clear()
