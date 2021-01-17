@@ -21,6 +21,8 @@ vis_resolution = 1024
 scalar = lambda: ti.field(dtype=real)
 vec = lambda: ti.Vector.field(2, dtype=real)
 
+
+
 loss = scalar()
 
 x = vec()
@@ -30,7 +32,7 @@ goal = [0.9, 0.15]
 
 n_objects = 1
 ground_height = 0.1
-
+tmp_x_field = ti.field(shape=(max_steps, n_objects, 2), dtype=real, needs_grad=False)
 
 @ti.layout
 def place():
@@ -61,6 +63,15 @@ def advance_toi(t: ti.i32):
 
 
 @ti.kernel
+def advance_ours(t: ti.i32, tmp_x: ti.template()):
+    for i in range(n_objects):
+        new_v = v[t - 1, i]
+        if x[t - 1, i][1] < ground_height and new_v[1] < 0:
+            new_v[1] = new_v[1] - (2 * new_v[1] / tmp_x[t - 1, i, 1]) * (x[t - 1, i][1])
+        v[t, i] = new_v
+        x[t, i] = x[t - 1, i] + dt * new_v
+
+@ti.kernel
 def advance_no_toi(t: ti.i32):
     for i in range(n_objects):
         new_v = v[t - 1, i]
@@ -69,14 +80,6 @@ def advance_no_toi(t: ti.i32):
         v[t, i] = new_v
         x[t, i] = x[t - 1, i] + dt * new_v
 
-@ti.kernel
-def advance_ours(t: ti.i32):
-    for i in range(n_objects):
-        new_v = v[t - 1, i]
-        if x[t - 1, i][1] < ground_height and new_v[1] < 0:
-            new_v[1] = new_v[1] - 2 * new_v[1] / (x[t - 1, i][1] + 1e-5)
-        v[t, i] = new_v
-        x[t, i] = x[t - 1, i] + dt * new_v
 
 
 
@@ -101,7 +104,12 @@ def forward(output=None, visualize=True):
             advance_toi(t)
         else:
             # advance_no_toi(t)
-            advance_ours(t)
+            tmp_x = np.copy(x.to_numpy())
+            # tmp_x = ti.Vector(tmp_x)
+            tmp_x_field.from_numpy(tmp_x)
+            # for i in range(n_objects):
+            #     tmp_x[i] = x[t - 1, i][1]
+            advance_ours(t, tmp_x_field)
 
         if (t + 1) % interval == 0 and visualize:
             gui.clear()
